@@ -1,5 +1,6 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Bmp;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Formats.Tga;
 using SixLabors.ImageSharp.PixelFormats;
 using System.IO;
@@ -17,7 +18,12 @@ namespace AssetStudio
                     image.SaveAsJpeg(stream);
                     break;
                 case ImageFormat.Png:
-                    image.SaveAsPng(stream);
+                    image.Save(stream, new PngEncoder
+                    {
+                        CompressionLevel = PngCompressionLevel.BestSpeed,
+                        FilterMethod = PngFilterMethod.None,
+                        ColorType = PngColorType.RgbWithAlpha
+                    });
                     break;
                 case ImageFormat.Bmp:
                     image.Save(stream, new BmpEncoder

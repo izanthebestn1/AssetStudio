@@ -6,6 +6,11 @@ namespace AssetStudio
 {
     public class Texture2DConverter
     {
+        private static bool crunchDecoderMissingLogged;
+        private static bool nativeDecoderMissingLogged;
+        private static bool managedDxtFallbackLogged;
+        private static bool managedBcFallbackLogged;
+
         private ResourceReader reader;
         private int m_Width;
         private int m_Height;
@@ -64,6 +69,13 @@ namespace AssetStudio
                     flag = DecodeDXT1(buff, bytes);
                     break;
                 case TextureFormat.DXT3:
+                    SwapBytesForXbox(buff);
+                    flag = ManagedTextureDecoder.DecodeDXT3(buff, m_Width, m_Height, bytes);
+                    if (flag && !managedDxtFallbackLogged)
+                    {
+                        managedDxtFallbackLogged = true;
+                        Logger.Info("Using managed DXT fallback decoder.");
+                    }
                     break;
                 case TextureFormat.DXT5: //test pass
                     SwapBytesForXbox(buff);
@@ -322,12 +334,34 @@ namespace AssetStudio
 
         private bool DecodeDXT1(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeDXT1(image_data, m_Width, m_Height, buff);
+            if (TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeDXT1(image_data, m_Width, m_Height, buff)))
+            {
+                return true;
+            }
+
+            var decoded = ManagedTextureDecoder.DecodeDXT1(image_data, m_Width, m_Height, buff);
+            if (decoded && !managedDxtFallbackLogged)
+            {
+                managedDxtFallbackLogged = true;
+                Logger.Info("Using managed DXT fallback decoder.");
+            }
+            return decoded;
         }
 
         private bool DecodeDXT5(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeDXT5(image_data, m_Width, m_Height, buff);
+            if (TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeDXT5(image_data, m_Width, m_Height, buff)))
+            {
+                return true;
+            }
+
+            var decoded = ManagedTextureDecoder.DecodeDXT5(image_data, m_Width, m_Height, buff);
+            if (decoded && !managedDxtFallbackLogged)
+            {
+                managedDxtFallbackLogged = true;
+                Logger.Info("Using managed DXT fallback decoder.");
+            }
+            return decoded;
         }
 
         private bool DecodeRGBA4444(byte[] image_data, byte[] buff)
@@ -488,22 +522,44 @@ namespace AssetStudio
 
         private bool DecodeBC4(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeBC4(image_data, m_Width, m_Height, buff);
+            if (TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeBC4(image_data, m_Width, m_Height, buff)))
+            {
+                return true;
+            }
+
+            var decoded = ManagedTextureDecoder.DecodeBC4(image_data, m_Width, m_Height, buff);
+            if (decoded && !managedBcFallbackLogged)
+            {
+                managedBcFallbackLogged = true;
+                Logger.Info("Using managed BC fallback decoder.");
+            }
+            return decoded;
         }
 
         private bool DecodeBC5(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeBC5(image_data, m_Width, m_Height, buff);
+            if (TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeBC5(image_data, m_Width, m_Height, buff)))
+            {
+                return true;
+            }
+
+            var decoded = ManagedTextureDecoder.DecodeBC5(image_data, m_Width, m_Height, buff);
+            if (decoded && !managedBcFallbackLogged)
+            {
+                managedBcFallbackLogged = true;
+                Logger.Info("Using managed BC fallback decoder.");
+            }
+            return decoded;
         }
 
         private bool DecodeBC6H(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeBC6(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeBC6(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeBC7(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeBC7(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeBC7(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeDXT1Crunched(byte[] image_data, byte[] buff)
@@ -532,62 +588,79 @@ namespace AssetStudio
 
         private bool DecodePVRTC(byte[] image_data, byte[] buff, bool is2bpp)
         {
-            return TextureDecoder.DecodePVRTC(image_data, m_Width, m_Height, buff, is2bpp);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodePVRTC(image_data, m_Width, m_Height, buff, is2bpp));
         }
 
         private bool DecodeETC1(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeETC1(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeETC1(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeATCRGB4(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeATCRGB4(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeATCRGB4(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeATCRGBA8(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeATCRGBA8(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeATCRGBA8(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeEACR(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeEACR(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeEACR(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeEACRSigned(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeEACRSigned(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeEACRSigned(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeEACRG(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeEACRG(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeEACRG(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeEACRGSigned(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeEACRGSigned(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeEACRGSigned(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeETC2(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeETC2(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeETC2(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeETC2A1(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeETC2A1(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeETC2A1(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeETC2A8(byte[] image_data, byte[] buff)
         {
-            return TextureDecoder.DecodeETC2A8(image_data, m_Width, m_Height, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeETC2A8(image_data, m_Width, m_Height, buff));
         }
 
         private bool DecodeASTC(byte[] image_data, byte[] buff, int blocksize)
         {
-            return TextureDecoder.DecodeASTC(image_data, m_Width, m_Height, blocksize, blocksize, buff);
+            return TryDecodeWithNativeDecoder(() => TextureDecoder.DecodeASTC(image_data, m_Width, m_Height, blocksize, blocksize, buff));
+        }
+
+        private static bool TryDecodeWithNativeDecoder(Func<bool> decode)
+        {
+            try
+            {
+                return decode();
+            }
+            catch (Exception e) when (e is TypeInitializationException || e is DllNotFoundException || e is BadImageFormatException || e is EntryPointNotFoundException)
+            {
+                if (!nativeDecoderMissingLogged)
+                {
+                    nativeDecoderMissingLogged = true;
+                    Logger.Warning($"Native texture decoder is unavailable: {e.Message}. Some texture previews/exports will be skipped.");
+                }
+                return false;
+            }
         }
 
         private bool DecodeRG16(byte[] image_data, byte[] buff)
@@ -685,16 +758,30 @@ namespace AssetStudio
 
         private bool UnpackCrunch(byte[] image_data, out byte[] result)
         {
-            if (version[0] > 2017 || (version[0] == 2017 && version[1] >= 3) //2017.3 and up
-                || m_TextureFormat == TextureFormat.ETC_RGB4Crunched
-                || m_TextureFormat == TextureFormat.ETC2_RGBA8Crunched)
+            try
             {
-                result = TextureDecoder.UnpackUnityCrunch(image_data);
+                if (version[0] > 2017 || (version[0] == 2017 && version[1] >= 3) //2017.3 and up
+                    || m_TextureFormat == TextureFormat.ETC_RGB4Crunched
+                    || m_TextureFormat == TextureFormat.ETC2_RGBA8Crunched)
+                {
+                    result = TextureDecoder.UnpackUnityCrunch(image_data);
+                }
+                else
+                {
+                    result = TextureDecoder.UnpackCrunch(image_data);
+                }
             }
-            else
+            catch (Exception e) when (e is TypeInitializationException || e is DllNotFoundException || e is BadImageFormatException)
             {
-                result = TextureDecoder.UnpackCrunch(image_data);
+                if (!crunchDecoderMissingLogged)
+                {
+                    crunchDecoderMissingLogged = true;
+                    Logger.Warning($"Crunch texture decoder is unavailable: {e.Message}. Crunch preview/export will be skipped.");
+                }
+                result = null;
+                return false;
             }
+
             if (result != null)
             {
                 return true;

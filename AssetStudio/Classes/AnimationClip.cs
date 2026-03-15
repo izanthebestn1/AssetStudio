@@ -817,7 +817,11 @@ namespace AssetStudio
             }
             customType = reader.ReadByte();
             isPPtrCurve = reader.ReadByte();
-            if (version[0] > 2022 || (version[0] == 2022 && version[1] >= 1)) //2022.1 and up
+            if (
+                (reader.serializedType.m_Type?.ContainsNamePath("isIntCurve") == true) // Auto-detect based on TypeTree
+                ||
+                (version[0] > 2022 || (version[0] == 2022 && version[1] >= 1)) //2022.1 and up
+               )
             {
                 isIntCurve = reader.ReadByte();
             }

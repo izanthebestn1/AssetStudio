@@ -25,6 +25,7 @@ namespace AssetStudio
         {
             var path = Path.GetDirectoryName(Path.GetFullPath(files[0]));
             MergeSplitAssets(path);
+            AutoDetectUnityVersion(path);
             var toReadFile = ProcessingSplitFiles(files.ToList());
             Load(toReadFile);
         }
@@ -32,6 +33,7 @@ namespace AssetStudio
         public void LoadFolder(string path)
         {
             MergeSplitAssets(path, true);
+            AutoDetectUnityVersion(path);
             var files = Directory.GetFiles(path, "*.*", SearchOption.AllDirectories).ToList();
             var toReadFile = ProcessingSplitFiles(files);
             Load(toReadFile);
@@ -80,6 +82,11 @@ namespace AssetStudio
                     break;
                 case FileType.WebFile:
                     LoadWebFile(reader);
+                    break;
+                case FileType.ResourceFile:
+                    // Standalone resource/cache metadata files are loaded on demand
+                    // by asset references; do not keep handles open while scanning folders.
+                    reader.Dispose();
                     break;
                 case FileType.GZipFile:
                     LoadFile(DecompressGZip(reader));
@@ -156,11 +163,7 @@ namespace AssetStudio
                 {
                     var assetsFile = new SerializedFile(reader, this);
                     assetsFile.originalPath = originalPath;
-                    if (!string.IsNullOrEmpty(unityVersion) && assetsFile.header.m_Version < SerializedFileFormatVersion.Unknown_7)
-                    {
-                        assetsFile.SetVersion(unityVersion);
-                    }
-                    CheckStrippedVersion(assetsFile);
+                    CheckStrippedVersion(assetsFile, unityVersion);
                     assetsFileList.Add(assetsFile);
                     assetsFileListHash.Add(assetsFile.fileName);
                 }
@@ -346,15 +349,66 @@ namespace AssetStudio
             }
         }
 
-        public void CheckStrippedVersion(SerializedFile assetsFile)
+        public void CheckStrippedVersion(SerializedFile assetsFile, string bundleUnityVersion = null)
         {
-            if (assetsFile.IsVersionStripped && string.IsNullOrEmpty(SpecifyUnityVersion))
-            {
-                throw new Exception("The Unity version has been stripped, please set the version in the options");
-            }
             if (!string.IsNullOrEmpty(SpecifyUnityVersion))
             {
                 assetsFile.SetVersion(SpecifyUnityVersion);
+                return;
+            }
+
+            if (assetsFile.IsVersionStripped)
+            {
+                if (!string.IsNullOrEmpty(bundleUnityVersion))
+                {
+                    assetsFile.SetVersion(bundleUnityVersion);
+                }
+                else
+                {
+                    throw new Exception("The Unity version has been stripped, please set the version in the options");
+                }
+            }
+        }
+
+        private void AutoDetectUnityVersion(string rootPath)
+        {
+            if (!string.IsNullOrEmpty(SpecifyUnityVersion) || string.IsNullOrEmpty(rootPath) || !Directory.Exists(rootPath))
+            {
+                return;
+            }
+
+            var candidates = new[]
+            {
+                "globalgamemanagers",
+                "data.unity3d",
+                "mainData",
+            };
+
+            foreach (var name in candidates)
+            {
+                try
+                {
+                    var matches = Directory.GetFiles(rootPath, name, SearchOption.AllDirectories);
+                    foreach (var candidatePath in matches)
+                    {
+                        using var reader = new FileReader(candidatePath);
+                        if (reader.FileType != FileType.AssetsFile)
+                        {
+                            continue;
+                        }
+                        var probeFile = new SerializedFile(reader, this);
+                        if (!probeFile.IsVersionStripped && !string.IsNullOrEmpty(probeFile.unityVersion))
+                        {
+                            SpecifyUnityVersion = probeFile.unityVersion;
+                            Logger.Info($"Auto detected Unity version: {SpecifyUnityVersion} from {candidatePath}");
+                            return;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore probe failures and continue with manual-version behavior.
+                }
             }
         }
 
@@ -493,6 +547,9 @@ namespace AssetStudio
                             .AppendLine($"PathID {objectInfo.m_PathID}")
                             .Append(e);
                         Logger.Error(sb.ToString());
+
+                        // Preserve unreadable assets so users can still inspect and export raw data.
+                        assetsFile.AddObject(new UnreadableObject(objectReader, e));
                     }
 
                     Progress.Report(++i, progressCount);

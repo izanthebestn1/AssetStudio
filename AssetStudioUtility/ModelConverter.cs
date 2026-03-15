@@ -886,7 +886,7 @@ namespace AssetStudio
                         var streamedValues = frame.keyList.Select(x => x.value).ToArray();
                         for (int curveIndex = 0; curveIndex < frame.keyList.Length;)
                         {
-                            ReadCurveData(iAnim, m_ClipBindingConstant, frame.keyList[curveIndex].index, frame.time, streamedValues, 0, ref curveIndex);
+                            ReadCurveData(animationClip, iAnim, m_ClipBindingConstant, frame.keyList[curveIndex].index, frame.time, streamedValues, 0, ref curveIndex);
                         }
                     }
                     var m_DenseClip = m_Clip.m_DenseClip;
@@ -898,7 +898,7 @@ namespace AssetStudio
                         for (int curveIndex = 0; curveIndex < m_DenseClip.m_CurveCount;)
                         {
                             var index = streamCount + curveIndex;
-                            ReadCurveData(iAnim, m_ClipBindingConstant, (int)index, time, m_DenseClip.m_SampleArray, (int)frameOffset, ref curveIndex);
+                            ReadCurveData(animationClip, iAnim, m_ClipBindingConstant, (int)index, time, m_DenseClip.m_SampleArray, (int)frameOffset, ref curveIndex);
                         }
                     }
                     if (m_Clip.m_ConstantClip != null)
@@ -911,7 +911,7 @@ namespace AssetStudio
                             for (int curveIndex = 0; curveIndex < m_ConstantClip.data.Length;)
                             {
                                 var index = streamCount + denseCount + curveIndex;
-                                ReadCurveData(iAnim, m_ClipBindingConstant, (int)index, time2, m_ConstantClip.data, 0, ref curveIndex);
+                                ReadCurveData(animationClip, iAnim, m_ClipBindingConstant, (int)index, time2, m_ConstantClip.data, 0, ref curveIndex);
                             }
                             time2 = animationClip.m_MuscleClip.m_StopTime;
                         }
@@ -920,9 +920,65 @@ namespace AssetStudio
             }
         }
 
-        private void ReadCurveData(ImportedKeyframedAnimation iAnim, AnimationClipBindingConstant m_ClipBindingConstant, int index, float time, float[] data, int offset, ref int curveIndex)
+        private static int GetTransformCurveDimension(uint attribute)
+        {
+            switch (attribute)
+            {
+                case 1: //kBindTransformPosition
+                case 3: //kBindTransformScale
+                case 4: //kBindTransformEuler
+                    return 3;
+                case 2: //kBindTransformRotation
+                    return 4;
+                default:
+                    return 1;
+            }
+        }
+
+        private static int GetCurveDimension(GenericBinding binding)
+        {
+            if (binding == null)
+            {
+                return 1;
+            }
+
+            if (binding.typeID == ClassIDType.Transform)
+            {
+                return GetTransformCurveDimension(binding.attribute);
+            }
+
+            return 1;
+        }
+
+        private string ResolveCurvePath(AnimationClip animationClip, uint pathHash)
+        {
+            var rawPath = GetPathFromHash(pathHash);
+            var fixedPath = FixBonePath(animationClip, rawPath);
+            if (string.IsNullOrEmpty(fixedPath))
+            {
+                fixedPath = FixBonePath(rawPath);
+            }
+
+            return fixedPath;
+        }
+
+        private void ReadCurveData(AnimationClip animationClip, ImportedKeyframedAnimation iAnim, AnimationClipBindingConstant m_ClipBindingConstant, int index, float time, float[] data, int offset, ref int curveIndex)
         {
             var binding = m_ClipBindingConstant.FindBinding(index);
+            if (binding == null)
+            {
+                curveIndex++;
+                return;
+            }
+
+            var dimension = GetCurveDimension(binding);
+            var dataIndex = curveIndex + offset;
+            if (dataIndex < 0 || dataIndex >= data.Length)
+            {
+                curveIndex += Math.Max(1, dimension);
+                return;
+            }
+
             if (binding.typeID == ClassIDType.SkinnedMeshRenderer) //BlendShape
             {
                 var channelName = GetChannelNameFromHash(binding.attribute);
@@ -937,19 +993,36 @@ namespace AssetStudio
                     channelName = channelName.Substring(dotPos + 1);
                 }
 
-                var bPath = FixBonePath(GetPathFromHash(binding.path));
+                var bPath = ResolveCurvePath(animationClip, binding.path);
                 if (string.IsNullOrEmpty(bPath))
                 {
                     bPath = GetPathByChannelName(channelName);
                 }
+                if (string.IsNullOrEmpty(bPath))
+                {
+                    curveIndex++;
+                    return;
+                }
                 var bTrack = iAnim.FindTrack(bPath);
                 bTrack.BlendShape = new ImportedBlendShape();
                 bTrack.BlendShape.ChannelName = channelName;
-                bTrack.BlendShape.Keyframes.Add(new ImportedKeyframe<float>(time, data[curveIndex++ + offset]));
+                bTrack.BlendShape.Keyframes.Add(new ImportedKeyframe<float>(time, data[dataIndex]));
+                curveIndex++;
             }
             else if (binding.typeID == ClassIDType.Transform)
             {
-                var path = FixBonePath(GetPathFromHash(binding.path));
+                if (dataIndex + dimension > data.Length)
+                {
+                    curveIndex += dimension;
+                    return;
+                }
+
+                var path = ResolveCurvePath(animationClip, binding.path);
+                if (string.IsNullOrEmpty(path))
+                {
+                    curveIndex += dimension;
+                    return;
+                }
                 var track = iAnim.FindTrack(path);
 
                 switch (binding.attribute)
@@ -957,39 +1030,43 @@ namespace AssetStudio
                     case 1:
                         track.Translations.Add(new ImportedKeyframe<Vector3>(time, new Vector3
                         (
-                            -data[curveIndex++ + offset],
-                            data[curveIndex++ + offset],
-                            data[curveIndex++ + offset]
+                            -data[dataIndex],
+                            data[dataIndex + 1],
+                            data[dataIndex + 2]
                         )));
+                        curveIndex += 3;
                         break;
                     case 2:
                         var value = Fbx.QuaternionToEuler(new Quaternion
                         (
-                            data[curveIndex++ + offset],
-                            -data[curveIndex++ + offset],
-                            -data[curveIndex++ + offset],
-                            data[curveIndex++ + offset]
+                            data[dataIndex],
+                            -data[dataIndex + 1],
+                            -data[dataIndex + 2],
+                            data[dataIndex + 3]
                         ));
                         track.Rotations.Add(new ImportedKeyframe<Vector3>(time, value));
+                        curveIndex += 4;
                         break;
                     case 3:
                         track.Scalings.Add(new ImportedKeyframe<Vector3>(time, new Vector3
                         (
-                            data[curveIndex++ + offset],
-                            data[curveIndex++ + offset],
-                            data[curveIndex++ + offset]
+                            data[dataIndex],
+                            data[dataIndex + 1],
+                            data[dataIndex + 2]
                         )));
+                        curveIndex += 3;
                         break;
                     case 4:
                         track.Rotations.Add(new ImportedKeyframe<Vector3>(time, new Vector3
                         (
-                            data[curveIndex++ + offset],
-                            -data[curveIndex++ + offset],
-                            -data[curveIndex++ + offset]
+                            data[dataIndex],
+                            -data[dataIndex + 1],
+                            -data[dataIndex + 2]
                         )));
+                        curveIndex += 3;
                         break;
                     default:
-                        curveIndex++;
+                        curveIndex += dimension;
                         break;
                 }
             }

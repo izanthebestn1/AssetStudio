@@ -41,17 +41,16 @@ namespace AssetStudio
                 {
                     if (downscaleMultiplier > 0f && downscaleMultiplier != 1f)
                     {
-                        var width = (int)(m_Texture2D.m_Width / downscaleMultiplier);
-                        var height = (int)(m_Texture2D.m_Height / downscaleMultiplier);
+                        var width = Math.Max(1, (int)Math.Round(m_Texture2D.m_Width / downscaleMultiplier));
+                        var height = Math.Max(1, (int)Math.Round(m_Texture2D.m_Height / downscaleMultiplier));
                         originalImage.Mutate(x => x.Resize(width, height));
                     }
-                    var rectX = (int)Math.Floor(textureRect.x);
-                    var rectY = (int)Math.Floor(textureRect.y);
-                    var rectRight = (int)Math.Ceiling(textureRect.x + textureRect.width);
-                    var rectBottom = (int)Math.Ceiling(textureRect.y + textureRect.height);
-                    rectRight = Math.Min(rectRight, originalImage.Width);
-                    rectBottom = Math.Min(rectBottom, originalImage.Height);
-                    var rect = new Rectangle(rectX, rectY, rectRight - rectX, rectBottom - rectY);
+                    var rect = CreateSafeCropRectangle(textureRect, originalImage.Width, originalImage.Height);
+                    if (rect.Width <= 0 || rect.Height <= 0)
+                    {
+                        Logger.Warning($"Sprite crop fallback for PathID {m_Sprite.m_PathID}: invalid texture rect ({textureRect.x}, {textureRect.y}, {textureRect.width}, {textureRect.height}) on texture {m_Texture2D.m_Width}x{m_Texture2D.m_Height}.");
+                        rect = new Rectangle(0, 0, originalImage.Width, originalImage.Height);
+                    }
                     var spriteImage = originalImage.Clone(x => x.Crop(rect));
                     if (settingsRaw.packed == 1)
                     {
@@ -115,6 +114,41 @@ namespace AssetStudio
             }
 
             return null;
+        }
+
+        private static Rectangle CreateSafeCropRectangle(Rectf textureRect, int imageWidth, int imageHeight)
+        {
+            if (imageWidth <= 0 || imageHeight <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            var left = ClampToRange((int)Math.Floor(textureRect.x), 0, imageWidth);
+            var top = ClampToRange((int)Math.Floor(textureRect.y), 0, imageHeight);
+            var right = ClampToRange((int)Math.Ceiling(textureRect.x + textureRect.width), 0, imageWidth);
+            var bottom = ClampToRange((int)Math.Ceiling(textureRect.y + textureRect.height), 0, imageHeight);
+
+            if (right <= left || bottom <= top)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(left, top, right - left, bottom - top);
+        }
+
+        private static int ClampToRange(int value, int min, int max)
+        {
+            if (value < min)
+            {
+                return min;
+            }
+
+            if (value > max)
+            {
+                return max;
+            }
+
+            return value;
         }
 
         private static Vector2[][] GetTriangles(SpriteRenderData m_RD)

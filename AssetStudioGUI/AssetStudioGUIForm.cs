@@ -89,7 +89,7 @@ namespace AssetStudioGUI
         private string saveDirectoryBackup = string.Empty;
 
         private GUILogger logger;
-        private string maintainerTag = "(maintained by zhangjiequan)";
+        private string maintainerTag = "Izan's Version";
 
         [DllImport("gdi32.dll")]
         private static extern IntPtr AddFontMemResourceEx(IntPtr pbFont, uint cbFont, IntPtr pdv, [In] ref uint pcFonts);
@@ -135,6 +135,7 @@ namespace AssetStudioGUI
                 {
                     await Task.Run(() => assetsManager.LoadFiles(paths));
                 }
+                logger.ShowErrorSummary();
                 BuildAssetStructures();
             }
         }
@@ -162,6 +163,7 @@ namespace AssetStudioGUI
                 {
                     await Task.Run(() => assetsManager.LoadFiles(paths));
                 }
+                logger.ShowErrorSummary();
                 BuildAssetStructures();
             }
         }
@@ -175,6 +177,7 @@ namespace AssetStudioGUI
                 openDirectoryBackup = Path.GetDirectoryName(openFileDialog1.FileNames[0]);
                 assetsManager.SpecifyUnityVersion = specifyUnityVersion.Text;
                 await Task.Run(() => assetsManager.LoadFiles(openFileDialog1.FileNames));
+                logger.ShowErrorSummary();
                 BuildAssetStructures();
             }
         }
@@ -189,6 +192,7 @@ namespace AssetStudioGUI
                 openDirectoryBackup = openFolderDialog.Folder;
                 assetsManager.SpecifyUnityVersion = specifyUnityVersion.Text;
                 await Task.Run(() => assetsManager.LoadFolder(openFolderDialog.Folder));
+                logger.ShowErrorSummary();
                 BuildAssetStructures();
             }
         }

@@ -152,6 +152,12 @@ namespace AssetStudioGUI
                     var exportable = false;
                     switch (asset)
                     {
+                        case UnreadableObject m_UnreadableObject:
+                            assetItem.TypeString = $"Unreadable ({m_UnreadableObject.OriginalType})";
+                            assetItem.Text = assetItem.TypeString;
+                            assetItem.InfoText = m_UnreadableObject.ErrorMessage;
+                            exportable = true;
+                            break;
                         case GameObject m_GameObject:
                             assetItem.Text = m_GameObject.m_Name;
                             break;
@@ -380,6 +386,7 @@ namespace AssetStudioGUI
                 int toExportCount = toExportAssets.Count;
                 int exportedCount = 0;
                 int i = 0;
+                const int statusUpdateInterval = 16;
                 Progress.Reset();
                 foreach (var asset in toExportAssets)
                 {
@@ -413,8 +420,10 @@ namespace AssetStudioGUI
                             exportPath = savePath;
                             break;
                     }
-                    exportPath += Path.DirectorySeparatorChar;
-                    StatusStripUpdate($"[{exportedCount}/{toExportCount}] Exporting {asset.TypeString}: {asset.Text}");
+                    if ((i % statusUpdateInterval) == 0 || i == toExportCount - 1)
+                    {
+                        StatusStripUpdate($"[{exportedCount}/{toExportCount}] Exporting {asset.TypeString}: {asset.Text}");
+                    }
                     try
                     {
                         switch (exportType)

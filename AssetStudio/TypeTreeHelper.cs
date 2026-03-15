@@ -8,6 +8,12 @@ namespace AssetStudio
 {
     public static class TypeTreeHelper
     {
+        private static readonly object TypeReadMismatchLock = new object();
+        private static readonly HashSet<string> LoggedTypeReadMismatches = new HashSet<string>();
+        private const int MaxTypeReadMismatchLogs = 12;
+        private static int loggedTypeReadMismatchCount;
+        private static bool loggedTypeReadMismatchOverflow;
+
         public static string ReadTypeString(TypeTree m_Type, ObjectReader reader)
         {
             reader.Reset();
@@ -20,7 +26,7 @@ namespace AssetStudio
             var readed = reader.Position - reader.byteStart;
             if (readed != reader.byteSize)
             {
-                Logger.Info($"Error while read type, read {readed} bytes but expected {reader.byteSize} bytes");
+                ReportTypeReadMismatch(readed, reader.byteSize);
             }
             return sb.ToString();
         }
@@ -177,9 +183,36 @@ namespace AssetStudio
             var readed = reader.Position - reader.byteStart;
             if (readed != reader.byteSize)
             {
-                Logger.Info($"Error while read type, read {readed} bytes but expected {reader.byteSize} bytes");
+                ReportTypeReadMismatch(readed, reader.byteSize);
             }
             return obj;
+        }
+
+        private static void ReportTypeReadMismatch(long readed, long expected)
+        {
+            var key = $"{readed}/{expected}";
+            lock (TypeReadMismatchLock)
+            {
+                if (!LoggedTypeReadMismatches.Add(key))
+                {
+                    return;
+                }
+
+                if (loggedTypeReadMismatchCount < MaxTypeReadMismatchLogs)
+                {
+                    loggedTypeReadMismatchCount++;
+                    Logger.Info($"Error while read type, read {readed} bytes but expected {expected} bytes (first occurrence, duplicates suppressed)");
+                    return;
+                }
+
+                if (!loggedTypeReadMismatchOverflow)
+                {
+                    loggedTypeReadMismatchOverflow = true;
+                    Logger.Info($"Additional type read mismatch messages are being suppressed ({LoggedTypeReadMismatches.Count} unique patterns detected).");
+                }
+
+                return;
+            }
         }
 
         private static object ReadValue(List<TypeTreeNode> m_Nodes, BinaryReader reader, ref int i)

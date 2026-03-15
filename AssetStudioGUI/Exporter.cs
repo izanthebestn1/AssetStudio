@@ -1,5 +1,6 @@
 ﻿using AssetStudio;
 using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,6 +10,16 @@ namespace AssetStudioGUI
 {
     internal static class Exporter
     {
+        private static readonly HashSet<string> CreatedDirectories = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        private static readonly object CreatedDirectoriesLock = new object();
+        private const int MaxSafeWindowsPathLength = 240;
+        private static readonly HashSet<string> ReservedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        };
+
         public static bool ExportTexture2D(AssetItem item, string exportPath)
         {
             var m_Texture2D = (Texture2D)item.Asset;
@@ -259,35 +270,74 @@ namespace AssetStudioGUI
 
         private static bool TryExportFile(string dir, AssetItem item, string extension, out string fullPath)
         {
-            var fileName = FixFileName(item.Text);
-            fullPath = Path.Combine(dir, fileName + extension);
+            EnsureDirectoryExists(dir);
+            var fileName = NormalizeExportName(item.Text);
+            fullPath = BuildExportPath(dir, fileName, extension);
             if (!File.Exists(fullPath))
             {
-                Directory.CreateDirectory(dir);
                 return true;
             }
-            fullPath = Path.Combine(dir, fileName + item.UniqueID + extension);
+            fullPath = BuildExportPath(dir, fileName, extension, item.UniqueID);
             if (!File.Exists(fullPath))
             {
-                Directory.CreateDirectory(dir);
                 return true;
             }
             return false;
         }
 
+        private static void EnsureDirectoryExists(string dir)
+        {
+            lock (CreatedDirectoriesLock)
+            {
+                if (!CreatedDirectories.Add(dir))
+                {
+                    return;
+                }
+            }
+            Directory.CreateDirectory(dir);
+        }
+
         public static bool ExportAnimator(AssetItem item, string exportPath, List<AssetItem> animationList = null)
         {
-            var exportFullPath = Path.Combine(exportPath, item.Text, item.Text + ".fbx");
+            var folderName = NormalizeExportName(item.Text);
+            var exportFullPath = BuildExportPath(Path.Combine(exportPath, folderName), folderName, ".fbx");
             if (File.Exists(exportFullPath))
             {
-                exportFullPath = Path.Combine(exportPath, item.Text + item.UniqueID, item.Text + ".fbx");
+                exportFullPath = BuildExportPath(Path.Combine(exportPath, folderName + item.UniqueID), folderName, ".fbx");
             }
-            var m_Animator = (Animator)item.Asset;
-            var convert = animationList != null
-                ? new ModelConverter(m_Animator, Properties.Settings.Default.convertType, animationList.Select(x => (AnimationClip)x.Asset).ToArray())
-                : new ModelConverter(m_Animator, Properties.Settings.Default.convertType);
-            ExportFbx(convert, exportFullPath);
-            return true;
+            try
+            {
+                var m_Animator = (Animator)item.Asset;
+                var convert = animationList != null
+                    ? new ModelConverter(m_Animator, Properties.Settings.Default.convertType, animationList.Select(x => (AnimationClip)x.Asset).ToArray())
+                    : new ModelConverter(m_Animator, Properties.Settings.Default.convertType);
+                ExportFbx(convert, exportFullPath);
+                return true;
+            }
+            catch (System.Exception ex) when (ex is NotSupportedException || ex is DllNotFoundException || ex is BadImageFormatException || ex is EntryPointNotFoundException || ex is TypeInitializationException)
+            {
+                Logger.Warning($"FBX export unavailable for Animator '{item.Text}', trying OBJ fallback: {ex.Message}");
+
+                var m_Animator = (Animator)item.Asset;
+                var convert = animationList != null
+                    ? new ModelConverter(m_Animator, Properties.Settings.Default.convertType, animationList.Select(x => (AnimationClip)x.Asset).ToArray())
+                    : new ModelConverter(m_Animator, Properties.Settings.Default.convertType);
+
+                var outputDirectory = Path.GetDirectoryName(exportFullPath);
+                if (string.IsNullOrEmpty(outputDirectory))
+                {
+                    outputDirectory = exportPath;
+                }
+
+                if (ModelExporter.ExportObj(outputDirectory, item.Text, convert, out var outputObjPath))
+                {
+                    Logger.Warning($"Animator '{item.Text}' exported as OBJ fallback: {outputObjPath}");
+                    return true;
+                }
+
+                Logger.Error($"OBJ fallback export also failed for Animator '{item.Text}'.");
+                return false;
+            }
         }
 
         public static void ExportGameObject(GameObject gameObject, string exportPath, List<AssetItem> animationList = null)
@@ -295,7 +345,7 @@ namespace AssetStudioGUI
             var convert = animationList != null
                 ? new ModelConverter(gameObject, Properties.Settings.Default.convertType, animationList.Select(x => (AnimationClip)x.Asset).ToArray())
                 : new ModelConverter(gameObject, Properties.Settings.Default.convertType);
-            exportPath = exportPath + FixFileName(gameObject.m_Name) + ".fbx";
+            exportPath = BuildExportPath(exportPath, NormalizeExportName(gameObject.m_Name), ".fbx");
             ExportFbx(convert, exportPath);
         }
 
@@ -379,8 +429,78 @@ namespace AssetStudioGUI
 
         public static string FixFileName(string str)
         {
-            if (str.Length >= 260) return Path.GetRandomFileName();
-            return Path.GetInvalidFileNameChars().Aggregate(str, (current, c) => current.Replace(c, '_'));
+            return NormalizeExportName(str);
+        }
+
+        private static string BuildExportPath(string dir, string fileName, string extension, string suffix = null)
+        {
+            var safeName = TruncateFileName(dir, fileName, extension, suffix);
+            var finalName = string.IsNullOrEmpty(suffix) ? safeName : safeName + suffix;
+            return Path.Combine(dir, finalName + extension);
+        }
+
+        private static string NormalizeExportName(string str)
+        {
+            if (string.IsNullOrWhiteSpace(str))
+            {
+                return "unnamed";
+            }
+
+            var normalized = CollapseCloneSuffixes(str.Trim());
+            normalized = string.Concat(normalized.Select(c => char.IsControl(c) ? '_' : c));
+            normalized = Path.GetInvalidFileNameChars().Aggregate(normalized, (current, c) => current.Replace(c, '_'));
+            normalized = normalized.Trim().TrimEnd('.');
+
+            if (string.IsNullOrEmpty(normalized))
+            {
+                normalized = "unnamed";
+            }
+
+            if (ReservedFileNames.Contains(normalized))
+            {
+                normalized += "_";
+            }
+
+            return normalized;
+        }
+
+        private static string CollapseCloneSuffixes(string value)
+        {
+            const string cloneSuffix = "(Clone)";
+            var cloneCount = 0;
+            while (value.EndsWith(cloneSuffix, StringComparison.Ordinal))
+            {
+                value = value.Substring(0, value.Length - cloneSuffix.Length);
+                cloneCount++;
+            }
+
+            value = value.TrimEnd();
+            if (cloneCount <= 0)
+            {
+                return value;
+            }
+
+            if (string.IsNullOrEmpty(value))
+            {
+                value = "unnamed";
+            }
+
+            return cloneCount == 1 ? value + " (Clone)" : $"{value} (Clone x{cloneCount})";
+        }
+
+        private static string TruncateFileName(string dir, string fileName, string extension, string suffix)
+        {
+            var effectiveDir = string.IsNullOrEmpty(dir) ? string.Empty : dir;
+            var suffixLength = string.IsNullOrEmpty(suffix) ? 0 : suffix.Length;
+            var reservedLength = effectiveDir.Length + extension.Length + suffixLength + 1;
+            var maxNameLength = Math.Max(16, MaxSafeWindowsPathLength - reservedLength);
+
+            if (fileName.Length <= maxNameLength)
+            {
+                return fileName;
+            }
+
+            return fileName.Substring(0, maxNameLength).TrimEnd(' ', '.');
         }
     }
 }

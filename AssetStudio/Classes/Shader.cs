@@ -5,6 +5,37 @@ using System.Linq;
 
 namespace AssetStudio
 {
+    internal static class ShaderReadSafety
+    {
+        private const int MaxArrayElements = 1_000_000;
+
+        public static int ReadCount(BinaryReader reader, int minElementBytes, string fieldName, int maxElements = MaxArrayElements)
+        {
+            var count = reader.ReadInt32();
+            if (count < 0)
+            {
+                throw new EndOfStreamException($"Invalid count for {fieldName}: {count}.");
+            }
+
+            if (count > maxElements)
+            {
+                throw new EndOfStreamException($"Count for {fieldName} is too large: {count}.");
+            }
+
+            if (minElementBytes > 0)
+            {
+                var remaining = reader.BaseStream.Length - reader.BaseStream.Position;
+                var required = (long)count * minElementBytes;
+                if (required > remaining)
+                {
+                    throw new EndOfStreamException($"Count for {fieldName} exceeds remaining stream data. Count={count}, Remaining={remaining}.");
+                }
+            }
+
+            return count;
+        }
+    }
+
     public class Hash128
     {
         public byte[] bytes;
@@ -27,14 +58,14 @@ namespace AssetStudio
             var m_ArraySize = reader.ReadInt32();
             var m_StructSize = reader.ReadInt32();
 
-            int numVectorParams = reader.ReadInt32();
+            int numVectorParams = ShaderReadSafety.ReadCount(reader, 14, nameof(m_VectorParams));
             m_VectorParams = new VectorParameter[numVectorParams];
             for (int i = 0; i < numVectorParams; i++)
             {
                 m_VectorParams[i] = new VectorParameter(reader);
             }
 
-            int numMatrixParams = reader.ReadInt32();
+            int numMatrixParams = ShaderReadSafety.ReadCount(reader, 14, nameof(m_MatrixParams));
             m_MatrixParams = new MatrixParameter[numMatrixParams];
             for (int i = 0; i < numMatrixParams; i++)
             {
@@ -116,7 +147,7 @@ namespace AssetStudio
 
         public SerializedProperties(BinaryReader reader)
         {
-            int numProps = reader.ReadInt32();
+            int numProps = ShaderReadSafety.ReadCount(reader, 4, nameof(m_Props));
             m_Props = new SerializedProperty[numProps];
             for (int i = 0; i < numProps; i++)
             {
@@ -295,7 +326,7 @@ namespace AssetStudio
 
         public ParserBindChannels(BinaryReader reader)
         {
-            int numChannels = reader.ReadInt32();
+            int numChannels = ShaderReadSafety.ReadCount(reader, 2, nameof(m_Channels));
             m_Channels = new ShaderBindChannel[numChannels];
             for (int i = 0; i < numChannels; i++)
             {
@@ -402,14 +433,14 @@ namespace AssetStudio
 
             m_NameIndex = reader.ReadInt32();
 
-            int numMatrixParams = reader.ReadInt32();
+            int numMatrixParams = ShaderReadSafety.ReadCount(reader, 14, nameof(m_MatrixParams));
             m_MatrixParams = new MatrixParameter[numMatrixParams];
             for (int i = 0; i < numMatrixParams; i++)
             {
                 m_MatrixParams[i] = new MatrixParameter(reader);
             }
 
-            int numVectorParams = reader.ReadInt32();
+            int numVectorParams = ShaderReadSafety.ReadCount(reader, 14, nameof(m_VectorParams));
             m_VectorParams = new VectorParameter[numVectorParams];
             for (int i = 0; i < numVectorParams; i++)
             {
@@ -417,7 +448,7 @@ namespace AssetStudio
             }
             if (version[0] > 2017 || (version[0] == 2017 && version[1] >= 3)) //2017.3 and up
             {
-                int numStructParams = reader.ReadInt32();
+                int numStructParams = ShaderReadSafety.ReadCount(reader, 20, nameof(m_StructParams));
                 m_StructParams = new StructParameter[numStructParams];
                 for (int i = 0; i < numStructParams; i++)
                 {
@@ -502,56 +533,56 @@ namespace AssetStudio
 
         public SerializedProgramParameters(ObjectReader reader)
         {
-            int numVectorParams = reader.ReadInt32();
+            int numVectorParams = ShaderReadSafety.ReadCount(reader, 14, nameof(m_VectorParams));
             m_VectorParams = new VectorParameter[numVectorParams];
             for (int i = 0; i < numVectorParams; i++)
             {
                 m_VectorParams[i] = new VectorParameter(reader);
             }
 
-            int numMatrixParams = reader.ReadInt32();
+            int numMatrixParams = ShaderReadSafety.ReadCount(reader, 14, nameof(m_MatrixParams));
             m_MatrixParams = new MatrixParameter[numMatrixParams];
             for (int i = 0; i < numMatrixParams; i++)
             {
                 m_MatrixParams[i] = new MatrixParameter(reader);
             }
 
-            int numTextureParams = reader.ReadInt32();
+            int numTextureParams = ShaderReadSafety.ReadCount(reader, 13, nameof(m_TextureParams));
             m_TextureParams = new TextureParameter[numTextureParams];
             for (int i = 0; i < numTextureParams; i++)
             {
                 m_TextureParams[i] = new TextureParameter(reader);
             }
 
-            int numBufferParams = reader.ReadInt32();
+            int numBufferParams = ShaderReadSafety.ReadCount(reader, 8, nameof(m_BufferParams));
             m_BufferParams = new BufferBinding[numBufferParams];
             for (int i = 0; i < numBufferParams; i++)
             {
                 m_BufferParams[i] = new BufferBinding(reader);
             }
 
-            int numConstantBuffers = reader.ReadInt32();
+            int numConstantBuffers = ShaderReadSafety.ReadCount(reader, 8, nameof(m_ConstantBuffers));
             m_ConstantBuffers = new ConstantBuffer[numConstantBuffers];
             for (int i = 0; i < numConstantBuffers; i++)
             {
                 m_ConstantBuffers[i] = new ConstantBuffer(reader);
             }
 
-            int numConstantBufferBindings = reader.ReadInt32();
+            int numConstantBufferBindings = ShaderReadSafety.ReadCount(reader, 8, nameof(m_ConstantBufferBindings));
             m_ConstantBufferBindings = new BufferBinding[numConstantBufferBindings];
             for (int i = 0; i < numConstantBufferBindings; i++)
             {
                 m_ConstantBufferBindings[i] = new BufferBinding(reader);
             }
 
-            int numUAVParams = reader.ReadInt32();
+            int numUAVParams = ShaderReadSafety.ReadCount(reader, 12, nameof(m_UAVParams));
             m_UAVParams = new UAVParameter[numUAVParams];
             for (int i = 0; i < numUAVParams; i++)
             {
                 m_UAVParams[i] = new UAVParameter(reader);
             }
 
-            int numSamplers = reader.ReadInt32();
+            int numSamplers = ShaderReadSafety.ReadCount(reader, 8, nameof(m_Samplers));
             m_Samplers = new SamplerParameter[numSamplers];
             for (int i = 0; i < numSamplers; i++)
             {
@@ -584,20 +615,48 @@ namespace AssetStudio
             m_BlobIndex = reader.ReadUInt32();
             m_Channels = new ParserBindChannels(reader);
 
-            if ((version[0] >= 2019 && version[0] < 2021) || (version[0] == 2021 && version[1] < 2)) //2019 ~2021.1
+            var hasGlobalKeywordIndices = reader.serializedType.m_Type?.ContainsNamePath("m_GlobalKeywordIndices.Array.data") == true;
+            var hasLocalKeywordIndices = reader.serializedType.m_Type?.ContainsNamePath("m_LocalKeywordIndices.Array.data") == true;
+            var hasCombinedKeywordIndices = reader.serializedType.m_Type?.ContainsNamePath("m_KeywordIndices.Array.data") == true;
+
+            var preferSeparatedKeywordArrays =
+                (hasGlobalKeywordIndices && hasLocalKeywordIndices)
+                || ((version[0] >= 2019 && version[0] < 2021) || (version[0] == 2021 && version[1] < 2)); //2019 ~2021.1
+            var preferCombinedKeywordArray = hasCombinedKeywordIndices || !preferSeparatedKeywordArrays;
+
+            var keywordStartPosition = reader.Position;
+            var keywordParsed = false;
+
+            if (preferSeparatedKeywordArrays)
             {
-                var m_GlobalKeywordIndices = reader.ReadUInt16Array();
-                reader.AlignStream();
-                var m_LocalKeywordIndices = reader.ReadUInt16Array();
-                reader.AlignStream();
-            }
-            else
-            {
-                m_KeywordIndices = reader.ReadUInt16Array();
-                if (version[0] >= 2017) //2017 and up
+                try
                 {
-                    reader.AlignStream();
+                    ReadKeywordIndicesArray(reader, shouldAlign: version[0] >= 2017);
+                    ReadKeywordIndicesArray(reader, shouldAlign: version[0] >= 2017);
+                    keywordParsed = true;
                 }
+                catch
+                {
+                    reader.Position = keywordStartPosition;
+                }
+            }
+
+            if (!keywordParsed && preferCombinedKeywordArray)
+            {
+                try
+                {
+                    m_KeywordIndices = ReadKeywordIndicesArray(reader, shouldAlign: version[0] >= 2017);
+                    keywordParsed = true;
+                }
+                catch
+                {
+                    reader.Position = keywordStartPosition;
+                }
+            }
+
+            if (!keywordParsed)
+            {
+                throw new EndOfStreamException("Unable to parse SerializedSubProgram keyword indices with known layouts.");
             }
 
             m_ShaderHardwareTier = reader.ReadSByte();
@@ -614,49 +673,49 @@ namespace AssetStudio
             }
             else
             {
-                int numVectorParams = reader.ReadInt32();
+                int numVectorParams = ShaderReadSafety.ReadCount(reader, 14, nameof(m_VectorParams));
                 m_VectorParams = new VectorParameter[numVectorParams];
                 for (int i = 0; i < numVectorParams; i++)
                 {
                     m_VectorParams[i] = new VectorParameter(reader);
                 }
 
-                int numMatrixParams = reader.ReadInt32();
+                int numMatrixParams = ShaderReadSafety.ReadCount(reader, 14, nameof(m_MatrixParams));
                 m_MatrixParams = new MatrixParameter[numMatrixParams];
                 for (int i = 0; i < numMatrixParams; i++)
                 {
                     m_MatrixParams[i] = new MatrixParameter(reader);
                 }
 
-                int numTextureParams = reader.ReadInt32();
+                int numTextureParams = ShaderReadSafety.ReadCount(reader, 13, nameof(m_TextureParams));
                 m_TextureParams = new TextureParameter[numTextureParams];
                 for (int i = 0; i < numTextureParams; i++)
                 {
                     m_TextureParams[i] = new TextureParameter(reader);
                 }
 
-                int numBufferParams = reader.ReadInt32();
+                int numBufferParams = ShaderReadSafety.ReadCount(reader, 8, nameof(m_BufferParams));
                 m_BufferParams = new BufferBinding[numBufferParams];
                 for (int i = 0; i < numBufferParams; i++)
                 {
                     m_BufferParams[i] = new BufferBinding(reader);
                 }
 
-                int numConstantBuffers = reader.ReadInt32();
+                int numConstantBuffers = ShaderReadSafety.ReadCount(reader, 8, nameof(m_ConstantBuffers));
                 m_ConstantBuffers = new ConstantBuffer[numConstantBuffers];
                 for (int i = 0; i < numConstantBuffers; i++)
                 {
                     m_ConstantBuffers[i] = new ConstantBuffer(reader);
                 }
 
-                int numConstantBufferBindings = reader.ReadInt32();
+                int numConstantBufferBindings = ShaderReadSafety.ReadCount(reader, 8, nameof(m_ConstantBufferBindings));
                 m_ConstantBufferBindings = new BufferBinding[numConstantBufferBindings];
                 for (int i = 0; i < numConstantBufferBindings; i++)
                 {
                     m_ConstantBufferBindings[i] = new BufferBinding(reader);
                 }
 
-                int numUAVParams = reader.ReadInt32();
+                int numUAVParams = ShaderReadSafety.ReadCount(reader, 12, nameof(m_UAVParams));
                 m_UAVParams = new UAVParameter[numUAVParams];
                 for (int i = 0; i < numUAVParams; i++)
                 {
@@ -665,7 +724,7 @@ namespace AssetStudio
 
                 if (version[0] >= 2017) //2017 and up
                 {
-                    int numSamplers = reader.ReadInt32();
+                    int numSamplers = ShaderReadSafety.ReadCount(reader, 8, nameof(m_Samplers));
                     m_Samplers = new SamplerParameter[numSamplers];
                     for (int i = 0; i < numSamplers; i++)
                     {
@@ -685,6 +744,35 @@ namespace AssetStudio
                     var m_ShaderRequirements = reader.ReadInt32();
                 }
             }
+        }
+
+        private static ushort[] ReadKeywordIndicesArray(ObjectReader reader, bool shouldAlign)
+        {
+            var count = reader.ReadInt32();
+            if (count < 0)
+            {
+                throw new EndOfStreamException($"Invalid keyword index count: {count}.");
+            }
+
+            var remaining = reader.BaseStream.Length - reader.BaseStream.Position;
+            var required = (long)count * sizeof(ushort);
+            if (required > remaining)
+            {
+                throw new EndOfStreamException($"Keyword index array exceeds stream bounds. Count={count}, RemainingBytes={remaining}.");
+            }
+
+            var indices = new ushort[count];
+            for (var i = 0; i < count; i++)
+            {
+                indices[i] = reader.ReadUInt16();
+            }
+
+            if (shouldAlign)
+            {
+                reader.AlignStream();
+            }
+
+            return indices;
         }
     }
     
@@ -718,7 +806,7 @@ namespace AssetStudio
         {
             var version = reader.version;
 
-            int numSubPrograms = reader.ReadInt32();
+            int numSubPrograms = ShaderReadSafety.ReadCount(reader, 16, nameof(m_SubPrograms));
             m_SubPrograms = new SerializedSubProgram[numSubPrograms];
             for (int i = 0; i < numSubPrograms; i++)
             {
@@ -736,11 +824,11 @@ namespace AssetStudio
                 (version[0] >= 2023) //2023 and up
                 ) 
             {
-                var m_PlayerSubProgramsSize = reader.ReadInt32();
+                var m_PlayerSubProgramsSize = ShaderReadSafety.ReadCount(reader, 4, nameof(m_PlayerSubPrograms));
                 m_PlayerSubPrograms = new SerializedPlayerSubProgram[m_PlayerSubProgramsSize][];
                 for (int i = 0; i < m_PlayerSubProgramsSize; i++)
                 {
-                    var m_PlayerSubProgramsSizeSize = reader.ReadInt32();
+                    var m_PlayerSubProgramsSizeSize = ShaderReadSafety.ReadCount(reader, 16, nameof(m_PlayerSubPrograms));
                     m_PlayerSubPrograms[i] = new SerializedPlayerSubProgram[m_PlayerSubProgramsSizeSize];
                     for (int j = 0; j < m_PlayerSubProgramsSizeSize; j++)
                     {
@@ -759,7 +847,11 @@ namespace AssetStudio
                 m_CommonParameters = new SerializedProgramParameters(reader);
             }
 
-            if (version[0] > 2022 || (version[0] == 2022 && version[1] >= 1)) //2022.1 and up
+            if (
+                (reader.serializedType.m_Type?.ContainsNamePath("m_SerializedKeywordStateMask.Array.data") == true) // Auto-detect based on TypeTree
+                ||
+                (version[0] > 2022 || (version[0] == 2022 && version[1] >= 1)) //2022.1 and up
+               )
             {
                 m_SerializedKeywordStateMask = reader.ReadUInt16Array();
                 reader.AlignStream();
@@ -803,7 +895,7 @@ namespace AssetStudio
 
             if (version[0] > 2020 || (version[0] == 2020 && version[1] >= 2)) //2020.2 and up
             {
-                int numEditorDataHash = reader.ReadInt32();
+                int numEditorDataHash = ShaderReadSafety.ReadCount(reader, 16, nameof(m_EditorDataHash));
                 m_EditorDataHash = new Hash128[numEditorDataHash];
                 for (int i = 0; i < numEditorDataHash; i++)
                 {
@@ -821,7 +913,7 @@ namespace AssetStudio
                 }
             }
 
-            int numIndices = reader.ReadInt32();
+            int numIndices = ShaderReadSafety.ReadCount(reader, 8, nameof(m_NameIndices));
             m_NameIndices = new KeyValuePair<string, int>[numIndices];
             for (int i = 0; i < numIndices; i++)
             {
@@ -850,7 +942,11 @@ namespace AssetStudio
             m_Name = reader.ReadAlignedString();
             m_TextureName = reader.ReadAlignedString();
             m_Tags = new SerializedTagMap(reader);
-            if (version[0] == 2021 && version[1] >= 2) //2021.2 ~2021.x
+            if (
+                (reader.serializedType.m_Type?.ContainsNamePath("m_SerializedKeywordStateMask.Array.data") == true) // Auto-detect based on TypeTree
+                ||
+                (version[0] == 2021 && version[1] >= 2) //2021.2 ~2021.x
+               )
             {
                 m_SerializedKeywordStateMask = reader.ReadUInt16Array();
                 reader.AlignStream();
@@ -864,7 +960,7 @@ namespace AssetStudio
 
         public SerializedTagMap(BinaryReader reader)
         {
-            int numTags = reader.ReadInt32();
+            int numTags = ShaderReadSafety.ReadCount(reader, 8, nameof(tags));
             tags = new KeyValuePair<string, string>[numTags];
             for (int i = 0; i < numTags; i++)
             {
@@ -881,7 +977,7 @@ namespace AssetStudio
 
         public SerializedSubShader(ObjectReader reader)
         {
-            int numPasses = reader.ReadInt32();
+            int numPasses = ShaderReadSafety.ReadCount(reader, 16, nameof(m_Passes));
             m_Passes = new SerializedPass[numPasses];
             for (int i = 0; i < numPasses; i++)
             {
@@ -936,7 +1032,7 @@ namespace AssetStudio
 
             m_PropInfo = new SerializedProperties(reader);
 
-            int numSubShaders = reader.ReadInt32();
+            int numSubShaders = ShaderReadSafety.ReadCount(reader, 16, nameof(m_SubShaders));
             m_SubShaders = new SerializedSubShader[numSubShaders];
             for (int i = 0; i < numSubShaders; i++)
             {
@@ -954,7 +1050,7 @@ namespace AssetStudio
             m_CustomEditorName = reader.ReadAlignedString();
             m_FallbackName = reader.ReadAlignedString();
 
-            int numDependencies = reader.ReadInt32();
+            int numDependencies = ShaderReadSafety.ReadCount(reader, 8, nameof(m_Dependencies));
             m_Dependencies = new SerializedShaderDependency[numDependencies];
             for (int i = 0; i < numDependencies; i++)
             {
@@ -963,7 +1059,7 @@ namespace AssetStudio
 
             if (version[0] >= 2021) //2021.1 and up
             {
-                int m_CustomEditorForRenderPipelinesSize = reader.ReadInt32();
+                int m_CustomEditorForRenderPipelinesSize = ShaderReadSafety.ReadCount(reader, 8, nameof(m_CustomEditorForRenderPipelines));
                 m_CustomEditorForRenderPipelines = new SerializedCustomEditorForRenderPipeline[m_CustomEditorForRenderPipelinesSize];
                 for (int i = 0; i < m_CustomEditorForRenderPipelinesSize; i++)
                 {
@@ -1019,60 +1115,81 @@ namespace AssetStudio
         public uint[][] compressedLengths;
         public uint[][] decompressedLengths;
         public byte[] compressedBlob;
+        public bool m_ParseFallback;
+        public string m_ParseError;
 
         public Shader(ObjectReader reader) : base(reader)
         {
             if (version[0] == 5 && version[1] >= 5 || version[0] > 5) //5.5 and up
             {
-                m_ParsedForm = new SerializedShader(reader);
-                platforms = reader.ReadUInt32Array().Select(x => (ShaderCompilerPlatform)x).ToArray();
-                if (version[0] > 2019 || (version[0] == 2019 && version[1] >= 3)) //2019.3 and up
+                try
                 {
-                    offsets = reader.ReadUInt32ArrayArray();
-                    compressedLengths = reader.ReadUInt32ArrayArray();
-                    decompressedLengths = reader.ReadUInt32ArrayArray();
-                }
-                else
-                {
-                    offsets = reader.ReadUInt32Array().Select(x => new[] { x }).ToArray();
-                    compressedLengths = reader.ReadUInt32Array().Select(x => new[] { x }).ToArray();
-                    decompressedLengths = reader.ReadUInt32Array().Select(x => new[] { x }).ToArray();
-                }
-                compressedBlob = reader.ReadUInt8Array();
-                reader.AlignStream();
-                
-                if (
-                    (reader.serializedType.m_Type?.ContainsNamePath("Base.stageCounts.Array") == true)//Auto-detect based on TypeTree
-                    ||
-                    (version[0] == 2021 && version[1] == 3 && version[2] >= 12) //2021.3.12 and up
-                    ||
-                    (version[0] == 2022 && version[1] > 1) ||
-                    (version[0] == 2022 && version[1] == 1 && version[2] >= 21) //2022.1.21 and up
-                    ||
-                    (version[0] >= 2023) //2023 and up
-                    ) 
-                {
-                    var stageCounts = reader.ReadUInt32Array();
-                }
-
-                var m_DependenciesCount = reader.ReadInt32();
-                for (int i = 0; i < m_DependenciesCount; i++)
-                {
-                    new PPtr<Shader>(reader);
-                }
-
-                if (version[0] >= 2018)
-                {
-                    var m_NonModifiableTexturesCount = reader.ReadInt32();
-                    for (int i = 0; i < m_NonModifiableTexturesCount; i++)
+                    m_ParsedForm = new SerializedShader(reader);
+                    platforms = reader.ReadUInt32Array().Select(x => (ShaderCompilerPlatform)x).ToArray();
+                    if (version[0] > 2019 || (version[0] == 2019 && version[1] >= 3)) //2019.3 and up
                     {
-                        var first = reader.ReadAlignedString();
-                        new PPtr<Texture>(reader);
+                        offsets = reader.ReadUInt32ArrayArray();
+                        compressedLengths = reader.ReadUInt32ArrayArray();
+                        decompressedLengths = reader.ReadUInt32ArrayArray();
                     }
-                }
+                    else
+                    {
+                        offsets = reader.ReadUInt32Array().Select(x => new[] { x }).ToArray();
+                        compressedLengths = reader.ReadUInt32Array().Select(x => new[] { x }).ToArray();
+                        decompressedLengths = reader.ReadUInt32Array().Select(x => new[] { x }).ToArray();
+                    }
+                    compressedBlob = reader.ReadUInt8Array();
+                    reader.AlignStream();
 
-                var m_ShaderIsBaked = reader.ReadBoolean();
-                reader.AlignStream();
+                    if (
+                        (reader.serializedType.m_Type?.ContainsNamePath("Base.stageCounts.Array") == true)//Auto-detect based on TypeTree
+                        ||
+                        (version[0] == 2021 && version[1] == 3 && version[2] >= 12) //2021.3.12 and up
+                        ||
+                        (version[0] == 2022 && version[1] > 1) ||
+                        (version[0] == 2022 && version[1] == 1 && version[2] >= 21) //2022.1.21 and up
+                        ||
+                        (version[0] >= 2023) //2023 and up
+                        )
+                    {
+                        var stageCounts = reader.ReadUInt32Array();
+                    }
+
+                    var m_DependenciesCount = reader.ReadInt32();
+                    for (int i = 0; i < m_DependenciesCount; i++)
+                    {
+                        new PPtr<Shader>(reader);
+                    }
+
+                    if (version[0] >= 2018)
+                    {
+                        var m_NonModifiableTexturesCount = reader.ReadInt32();
+                        for (int i = 0; i < m_NonModifiableTexturesCount; i++)
+                        {
+                            var first = reader.ReadAlignedString();
+                            new PPtr<Texture>(reader);
+                        }
+                    }
+
+                    var m_ShaderIsBaked = reader.ReadBoolean();
+                    reader.AlignStream();
+                }
+                catch (Exception ex)
+                {
+                    // Some recent Unity variants drift in serialized Shader layout.
+                    // Fall back to raw/script mode so asset loading can continue.
+                    Logger.Warning($"Shader parse fallback for PathID {reader.m_PathID}: {ex.Message}");
+                    m_ParseFallback = true;
+                    m_ParseError = ex.Message;
+                    m_ParsedForm = null;
+                    platforms = Array.Empty<ShaderCompilerPlatform>();
+                    offsets = Array.Empty<uint[]>();
+                    compressedLengths = Array.Empty<uint[]>();
+                    decompressedLengths = Array.Empty<uint[]>();
+                    compressedBlob = null;
+                    m_Script = Array.Empty<byte>();
+                    reader.Position = reader.byteStart + reader.byteSize;
+                }
             }
             else
             {

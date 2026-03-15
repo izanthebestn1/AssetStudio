@@ -132,7 +132,11 @@ namespace AssetStudio
             {
                 var m_ColorSpace = reader.ReadInt32();
             }
-            if (version[0] > 2020 || (version[0] == 2020 && version[1] >= 2)) //2020.2 and up
+            if (
+                (reader.serializedType.m_Type?.ContainsNamePath("Base.m_PlatformBlob.Array.data") == true) // Auto-detect based on TypeTree
+                ||
+                (version[0] > 2020 || (version[0] == 2020 && version[1] >= 2)) //2020.2 and up
+               )
             {
                 var m_PlatformBlob = reader.ReadUInt8Array();
                 reader.AlignStream();

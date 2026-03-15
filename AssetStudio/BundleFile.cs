@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using ZstdSharp;
 
 namespace AssetStudio
 {
@@ -28,7 +29,8 @@ namespace AssetStudio
         Lzma,
         Lz4,
         Lz4HC,
-        Lzham
+        Lzham,
+        Zstd = Lzham
     }
 
     public class BundleFile
@@ -76,7 +78,7 @@ namespace AssetStudio
             switch (m_Header.signature)
             {
                 case "UnityArchive":
-                    break; //TODO
+                    throw new NotSupportedException("UnityArchive bundle format is not supported yet.");
                 case "UnityWeb":
                 case "UnityRaw":
                     if (m_Header.version == 6)
@@ -252,13 +254,11 @@ namespace AssetStudio
             {
                 case CompressionType.None:
                     {
-                        Console.WriteLine("CompressionType in ReadBlocksInfoAndDirectory: " + "None");
                         blocksInfoUncompresseddStream = new MemoryStream(blocksInfoBytes);
                         break;
                     }
                 case CompressionType.Lzma:
                     {
-                        Console.WriteLine("CompressionType in ReadBlocksInfoAndDirectory: " + "LZMA");
                         blocksInfoUncompresseddStream = new MemoryStream((int)(uncompressedSize));
                         using (var blocksInfoCompressedStream = new MemoryStream(blocksInfoBytes))
                         {
@@ -270,13 +270,24 @@ namespace AssetStudio
                 case CompressionType.Lz4:
                 case CompressionType.Lz4HC:
                     {
-                        Console.WriteLine("CompressionType in ReadBlocksInfoAndDirectory: " + (compressionType == CompressionType.Lz4 ? "LZ4" : "LZ4HC"));
                         var uncompressedBytes = new byte[uncompressedSize];
                         var numWrite = LZ4Codec.Decode(blocksInfoBytes, uncompressedBytes);
                         if (numWrite != uncompressedSize)
                         {
                             throw new IOException($"Lz4 decompression error, write {numWrite} bytes but expected {uncompressedSize} bytes");
                         }
+                        blocksInfoUncompresseddStream = new MemoryStream(uncompressedBytes);
+                        break;
+                    }
+                case CompressionType.Zstd:
+                    {
+                        using var decompressor = new Decompressor();
+                        var uncompressedSpan = decompressor.Unwrap(blocksInfoBytes);
+                        if (uncompressedSpan.Length != uncompressedSize)
+                        {
+                            throw new IOException($"Zstd decompression error, write {uncompressedSpan.Length} bytes but expected {uncompressedSize} bytes");
+                        }
+                        var uncompressedBytes = uncompressedSpan.ToArray();
                         blocksInfoUncompresseddStream = new MemoryStream(uncompressedBytes);
                         break;
                     }
@@ -326,20 +337,17 @@ namespace AssetStudio
                 {
                     case CompressionType.None:
                         {
-                            Console.WriteLine("CompressionType in ReadBlocks: " + "None");
                             reader.BaseStream.CopyTo(blocksStream, blockInfo.compressedSize);
                             break;
                         }
                     case CompressionType.Lzma:
                         {
-                            Console.WriteLine("CompressionType in ReadBlocks: " + "LZMA");
                             SevenZipHelper.StreamDecompress(reader.BaseStream, blocksStream, blockInfo.compressedSize, blockInfo.uncompressedSize);
                             break;
                         }
                     case CompressionType.Lz4:
                     case CompressionType.Lz4HC:
                         {
-                            Console.WriteLine("CompressionType in ReadBlocks: " + (compressionType == CompressionType.Lz4 ? "LZ4" : "LZ4HC"));
                             var compressedSize = (int)blockInfo.compressedSize;
                             var compressedBytes = BigArrayPool<byte>.Shared.Rent(compressedSize);
                             reader.Read(compressedBytes, 0, compressedSize);
@@ -353,6 +361,28 @@ namespace AssetStudio
                             blocksStream.Write(uncompressedBytes, 0, uncompressedSize);
                             BigArrayPool<byte>.Shared.Return(compressedBytes);
                             BigArrayPool<byte>.Shared.Return(uncompressedBytes);
+                            break;
+                        }
+                    case CompressionType.Zstd:
+                        {
+                            var compressedSize = (int)blockInfo.compressedSize;
+                            var compressedBytes = BigArrayPool<byte>.Shared.Rent(compressedSize);
+                            reader.Read(compressedBytes, 0, compressedSize);
+                            try
+                            {
+                                using var decompressor = new Decompressor();
+                                var uncompressedSpan = decompressor.Unwrap(compressedBytes.AsSpan(0, compressedSize).ToArray());
+                                if (uncompressedSpan.Length != blockInfo.uncompressedSize)
+                                {
+                                    throw new IOException($"Zstd decompression error, write {uncompressedSpan.Length} bytes but expected {blockInfo.uncompressedSize} bytes");
+                                }
+                                var uncompressedBytes = uncompressedSpan.ToArray();
+                                blocksStream.Write(uncompressedBytes, 0, uncompressedBytes.Length);
+                            }
+                            finally
+                            {
+                                BigArrayPool<byte>.Shared.Return(compressedBytes);
+                            }
                             break;
                         }
                     default:

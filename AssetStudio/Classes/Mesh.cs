@@ -651,7 +651,11 @@ namespace AssetStudio
 
             int m_MeshUsageFlags = reader.ReadInt32();
 
-            if (version[0] > 2022 || (version[0] == 2022 && version[1] >= 1)) //2022.1 and up
+            if (
+                (reader.serializedType.m_Type?.ContainsNamePath("Base.m_CookingOptions") == true) // Auto-detect based on TypeTree
+                ||
+                (version[0] > 2022 || (version[0] == 2022 && version[1] >= 1)) //2022.1 and up
+               )
             {
                 int m_CookingOptions = reader.ReadInt32();
             }

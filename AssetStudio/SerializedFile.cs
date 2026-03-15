@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace AssetStudio
@@ -78,10 +79,6 @@ namespace AssetStudio
             if (header.m_Version >= SerializedFileFormatVersion.Unknown_8)
             {
                 m_TargetPlatform = (BuildTarget)reader.ReadInt32();
-                if (!Enum.IsDefined(typeof(BuildTarget), m_TargetPlatform))
-                {
-                    m_TargetPlatform = BuildTarget.UnknownPlatform;
-                }
             }
             if (header.m_Version >= SerializedFileFormatVersion.HasTypeTreeHashes)
             {
@@ -222,10 +219,28 @@ namespace AssetStudio
             if (stringVersion != strippedVersion)
             {
                 unityVersion = stringVersion;
-                var buildSplit = Regex.Replace(stringVersion, @"\d", "").Split(new[] { "." }, StringSplitOptions.RemoveEmptyEntries);
-                buildType = new BuildType(buildSplit[0]);
-                var versionSplit = Regex.Replace(stringVersion, @"\D", ".").Split(new[] { "." }, StringSplitOptions.RemoveEmptyEntries);
-                version = versionSplit.Select(int.Parse).ToArray();
+
+                var buildTypeMatch = Regex.Match(stringVersion, @"[a-zA-Z]+");
+                buildType = new BuildType(buildTypeMatch.Success ? buildTypeMatch.Value.ToLowerInvariant() : "f");
+
+                var versionMatches = Regex.Matches(stringVersion, @"\d+");
+                var parsed = new List<int>(4);
+                foreach (Match match in versionMatches)
+                {
+                    if (int.TryParse(match.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+                    {
+                        parsed.Add(value);
+                    }
+                }
+
+                // Some stripped/manually-entered versions can be short (e.g. "2023").
+                // Pad with zeros so version[0..3] reads remain safe across the codebase.
+                while (parsed.Count < 4)
+                {
+                    parsed.Add(0);
+                }
+
+                version = parsed.ToArray();
             }
         }
 
