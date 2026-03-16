@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using static AssetStudio.ImportHelper;
 
 namespace AssetStudio
@@ -11,6 +12,8 @@ namespace AssetStudio
     public class AssetsManager
     {
         public string SpecifyUnityVersion;
+        public string SpecifyGameProfile;
+        public GameProfile ActiveGameProfile { get; private set; } = GameProfile.Generic;
         public List<SerializedFile> assetsFileList = new List<SerializedFile>();
 
         internal Dictionary<string, int> assetsFileIndexCache = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -24,6 +27,7 @@ namespace AssetStudio
         public void LoadFiles(params string[] files)
         {
             var path = Path.GetDirectoryName(Path.GetFullPath(files[0]));
+            ResolveGameProfile(path);
             MergeSplitAssets(path);
             AutoDetectUnityVersion(path);
             var toReadFile = ProcessingSplitFiles(files.ToList());
@@ -32,6 +36,7 @@ namespace AssetStudio
 
         public void LoadFolder(string path)
         {
+            ResolveGameProfile(path);
             MergeSplitAssets(path, true);
             AutoDetectUnityVersion(path);
             var files = Directory.GetFiles(path, "*.*", SearchOption.AllDirectories).ToList();
@@ -377,39 +382,145 @@ namespace AssetStudio
                 return;
             }
 
-            var candidates = new[]
+            var candidates = new List<string>
             {
                 "globalgamemanagers",
                 "data.unity3d",
                 "mainData",
             };
 
-            foreach (var name in candidates)
+            if (ActiveGameProfile == GameProfile.LimbusCompany)
+            {
+                candidates.Add("globalgamemanagers.assets");
+                candidates.Add("resources.assets");
+            }
+
+            var probeRoots = GetVersionProbeRoots(rootPath);
+
+            foreach (var probeRoot in probeRoots)
+            {
+                foreach (var name in candidates)
+                {
+                    try
+                    {
+                        var matches = Directory.GetFiles(probeRoot, name, SearchOption.AllDirectories);
+                        foreach (var candidatePath in matches)
+                        {
+                            using var reader = new FileReader(candidatePath);
+                            if (reader.FileType != FileType.AssetsFile)
+                            {
+                                continue;
+                            }
+                            var probeFile = new SerializedFile(reader, this);
+                            if (!probeFile.IsVersionStripped && !string.IsNullOrEmpty(probeFile.unityVersion))
+                            {
+                                SpecifyUnityVersion = probeFile.unityVersion;
+                                Logger.Info($"Auto detected Unity version: {SpecifyUnityVersion} from {candidatePath}");
+                                return;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore probe failures and continue with manual-version behavior.
+                    }
+                }
+            }
+        }
+
+        private void ResolveGameProfile(string rootPath)
+        {
+            var requested = GameProfile.Auto;
+            if (!string.IsNullOrWhiteSpace(SpecifyGameProfile) && GameProfileResolver.TryParse(SpecifyGameProfile, out var parsedProfile))
+            {
+                requested = parsedProfile;
+            }
+
+            var resolvedProfile = GameProfileResolver.Resolve(requested, rootPath);
+            if (resolvedProfile != ActiveGameProfile)
+            {
+                ActiveGameProfile = resolvedProfile;
+                Logger.Info($"Active game profile: {ActiveGameProfile}");
+            }
+        }
+
+        private IEnumerable<string> GetVersionProbeRoots(string rootPath)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var current = rootPath;
+            var depth = 0;
+            while (!string.IsNullOrEmpty(current) && depth < 6)
+            {
+                if (Directory.Exists(current) && seen.Add(current))
+                {
+                    yield return current;
+                }
+
+                var parent = Directory.GetParent(current);
+                if (parent == null)
+                {
+                    break;
+                }
+
+                current = parent.FullName;
+                depth++;
+            }
+
+            if (ActiveGameProfile == GameProfile.LimbusCompany)
+            {
+                foreach (var limbusRoot in GetLimbusInstallDataRoots())
+                {
+                    if (seen.Add(limbusRoot))
+                    {
+                        yield return limbusRoot;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> GetLimbusInstallDataRoots()
+        {
+            var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            if (!string.IsNullOrEmpty(programFilesX86))
+            {
+                var defaultDataRoot = Path.Combine(programFilesX86, "Steam", "steamapps", "common", "Limbus Company", "LimbusCompany_Data");
+                if (Directory.Exists(defaultDataRoot))
+                {
+                    roots.Add(defaultDataRoot);
+                }
+            }
+
+            var steamRoot = Path.Combine(programFilesX86, "Steam");
+            var libraryVdfPath = Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf");
+            if (File.Exists(libraryVdfPath))
             {
                 try
                 {
-                    var matches = Directory.GetFiles(rootPath, name, SearchOption.AllDirectories);
-                    foreach (var candidatePath in matches)
+                    var content = File.ReadAllText(libraryVdfPath);
+                    foreach (Match match in Regex.Matches(content, "\"path\"\\s+\"([^\"]+)\"", RegexOptions.IgnoreCase))
                     {
-                        using var reader = new FileReader(candidatePath);
-                        if (reader.FileType != FileType.AssetsFile)
+                        var libraryPath = match.Groups[1].Value.Replace("\\\\", "\\");
+                        if (string.IsNullOrWhiteSpace(libraryPath))
                         {
                             continue;
                         }
-                        var probeFile = new SerializedFile(reader, this);
-                        if (!probeFile.IsVersionStripped && !string.IsNullOrEmpty(probeFile.unityVersion))
+
+                        var dataRoot = Path.Combine(libraryPath, "steamapps", "common", "Limbus Company", "LimbusCompany_Data");
+                        if (Directory.Exists(dataRoot))
                         {
-                            SpecifyUnityVersion = probeFile.unityVersion;
-                            Logger.Info($"Auto detected Unity version: {SpecifyUnityVersion} from {candidatePath}");
-                            return;
+                            roots.Add(dataRoot);
                         }
                     }
                 }
                 catch
                 {
-                    // Ignore probe failures and continue with manual-version behavior.
+                    // Ignore Steam library parsing failures.
                 }
             }
+
+            return roots;
         }
 
         public void Clear()
@@ -428,6 +539,11 @@ namespace AssetStudio
             resourceFileReaders.Clear();
 
             assetsFileIndexCache.Clear();
+
+            if (string.IsNullOrWhiteSpace(SpecifyGameProfile))
+            {
+                ActiveGameProfile = GameProfile.Generic;
+            }
         }
 
         private void ReadAssets()

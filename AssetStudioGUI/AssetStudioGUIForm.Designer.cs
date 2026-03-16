@@ -45,6 +45,10 @@
             this.specifyUnityVersion = new System.Windows.Forms.ToolStripTextBox();
             this.showExpOpt = new System.Windows.Forms.ToolStripMenuItem();
             this.decompileLua = new System.Windows.Forms.ToolStripMenuItem();
+            this.gameProfileMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.profileAutoMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.profileGenericMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.profileLimbusMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.modelToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.exportAllObjectssplitToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
             this.exportSelectedObjectsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -219,6 +223,7 @@
             this.enablePreview,
             this.displayInfo,
             this.toolStripMenuItem14,
+            this.gameProfileMenuItem,
             this.showExpOpt,
             this.decompileLua});
             this.optionsToolStripMenuItem.Name = "optionsToolStripMenuItem";
@@ -272,6 +277,45 @@
             this.specifyUnityVersion.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
             this.specifyUnityVersion.Name = "specifyUnityVersion";
             this.specifyUnityVersion.Size = new System.Drawing.Size(100, 23);
+            // 
+            // gameProfileMenuItem
+            // 
+            this.gameProfileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.profileAutoMenuItem,
+            this.profileGenericMenuItem,
+            this.profileLimbusMenuItem});
+            this.gameProfileMenuItem.Name = "gameProfileMenuItem";
+            this.gameProfileMenuItem.Size = new System.Drawing.Size(223, 22);
+            this.gameProfileMenuItem.Text = "Game profile";
+            // 
+            // profileAutoMenuItem
+            // 
+            this.profileAutoMenuItem.CheckOnClick = true;
+            this.profileAutoMenuItem.Checked = true;
+            this.profileAutoMenuItem.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.profileAutoMenuItem.Name = "profileAutoMenuItem";
+            this.profileAutoMenuItem.Size = new System.Drawing.Size(160, 22);
+            this.profileAutoMenuItem.Text = "Auto";
+            this.profileAutoMenuItem.ToolTipText = "Automatically detect the game profile from the loaded path.";
+            this.profileAutoMenuItem.Click += new System.EventHandler(this.profileAutoMenuItem_Click);
+            // 
+            // profileGenericMenuItem
+            // 
+            this.profileGenericMenuItem.CheckOnClick = true;
+            this.profileGenericMenuItem.Name = "profileGenericMenuItem";
+            this.profileGenericMenuItem.Size = new System.Drawing.Size(160, 22);
+            this.profileGenericMenuItem.Text = "Generic";
+            this.profileGenericMenuItem.ToolTipText = "Use the generic Unity profile (no game-specific overrides).";
+            this.profileGenericMenuItem.Click += new System.EventHandler(this.profileGenericMenuItem_Click);
+            // 
+            // profileLimbusMenuItem
+            // 
+            this.profileLimbusMenuItem.CheckOnClick = true;
+            this.profileLimbusMenuItem.Name = "profileLimbusMenuItem";
+            this.profileLimbusMenuItem.Size = new System.Drawing.Size(160, 22);
+            this.profileLimbusMenuItem.Text = "Limbus Company";
+            this.profileLimbusMenuItem.ToolTipText = "Use the Limbus Company profile for improved asset compatibility.";
+            this.profileLimbusMenuItem.Click += new System.EventHandler(this.profileLimbusMenuItem_Click);
             // 
             // showExpOpt
             // 
@@ -1251,6 +1295,10 @@
         private System.Windows.Forms.ToolStripMenuItem aboutAssetStudioToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem donateAssetStudioToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem decompileLua;
+        private System.Windows.Forms.ToolStripMenuItem gameProfileMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem profileAutoMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem profileGenericMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem profileLimbusMenuItem;
     }
 }
 

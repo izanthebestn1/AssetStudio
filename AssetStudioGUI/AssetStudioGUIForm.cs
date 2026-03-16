@@ -110,6 +110,10 @@ namespace AssetStudioGUI
             displayInfo.Checked = Properties.Settings.Default.displayInfo;
             enablePreview.Checked = Properties.Settings.Default.enablePreview;
             decompileLua.Checked = Properties.Settings.Default.decompileLua;
+            // Game profile selector: initialize to Auto (default)
+            profileAutoMenuItem.Checked = true;
+            profileGenericMenuItem.Checked = false;
+            profileLimbusMenuItem.Checked = false;
             FMODinit();
 
             logger = new GUILogger(StatusStripUpdate);
@@ -240,14 +244,15 @@ namespace AssetStudioGUI
 
             (var productName, var treeNodeCollection) = await Task.Run(() => BuildAssetData());
             var typeMap = await Task.Run(() => BuildClassStructure());
+            var profileTag = $"[{assetsManager.ActiveGameProfile}]";
 
             if (!string.IsNullOrEmpty(productName))
             {
-                Text = $"AssetStudioGUI v{Application.ProductVersion} - {productName} - {assetsManager.assetsFileList[0].unityVersion} - {assetsManager.assetsFileList[0].m_TargetPlatform} - {maintainerTag}";
+                Text = $"AssetStudioGUI v{Application.ProductVersion} - {productName} - {assetsManager.assetsFileList[0].unityVersion} - {assetsManager.assetsFileList[0].m_TargetPlatform} - {profileTag} - {maintainerTag}";
             }
             else
             {
-                Text = $"AssetStudioGUI v{Application.ProductVersion} - no productName - {assetsManager.assetsFileList[0].unityVersion} - {assetsManager.assetsFileList[0].m_TargetPlatform} - {maintainerTag}";
+                Text = $"AssetStudioGUI v{Application.ProductVersion} - no productName - {assetsManager.assetsFileList[0].unityVersion} - {assetsManager.assetsFileList[0].m_TargetPlatform} - {profileTag} - {maintainerTag}";
             }
 
             assetListView.VirtualListSize = visibleAssets.Count;
@@ -409,6 +414,18 @@ namespace AssetStudioGUI
             Properties.Settings.Default.displayAll = displayAll.Checked;
             Properties.Settings.Default.Save();
         }
+
+        private void SetGameProfile(string profileName)
+        {
+            assetsManager.SpecifyGameProfile = profileName;
+            profileAutoMenuItem.Checked = profileName == "Auto";
+            profileGenericMenuItem.Checked = profileName == "Generic";
+            profileLimbusMenuItem.Checked = profileName == "LimbusCompany";
+        }
+
+        private void profileAutoMenuItem_Click(object sender, EventArgs e) => SetGameProfile("Auto");
+        private void profileGenericMenuItem_Click(object sender, EventArgs e) => SetGameProfile("Generic");
+        private void profileLimbusMenuItem_Click(object sender, EventArgs e) => SetGameProfile("LimbusCompany");
 
         private void decompileLua_CheckedChanged(object sender, EventArgs e)
         {
